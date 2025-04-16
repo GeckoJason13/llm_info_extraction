@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>基于LLM的长文档信息提取与分析系统</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.0/echarts.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <style>
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100px;
+        }
+        .loading-spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #09f;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <header class="bg-blue-600 text-white p-4">
+        <div class="container mx-auto">
+            <h1 class="text-2xl font-bold">基于LLM的长文档信息提取与分析系统</h1>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-4">
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">文档上传</h2>
+            <form id="upload-form" class="mb-4">
+                <div class="flex items-center space-x-4">
+                    <input type="file" id="file-input" class="p-2 border rounded flex-grow" accept=".txt,.pdf,.docx,.md,.json">
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">上传</button>
+                </div>
+            </form>
+            <div id="upload-status" class="hidden p-4 bg-gray-100 rounded"></div>
+            <div id="loading-upload" class="loading hidden">
+                <div class="loading-spinner"></div>
+                <span class="ml-2">上传处理中...</span>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold mb-4">文档分析</h2>
+
+            <div class="mb-6">
+                <h3 class="text-lg font-medium mb-2">选择文档</h3>
+                <select id="file-select" class="w-full p-2 border rounded mb-4">
+                    <option value="">-- 选择文档 --</option>
+                </select>
+                <div class="flex space-x-4">
+                    <button id="btn-keywords" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">关键词提取</button>
+                    <button id="btn-summary" class="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700">摘要生成</button>
+                    <button id="btn-sentiment" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">情感分析</button>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <ul class="flex border-b">
+                    <li class="mr-1">
+                        <a class="tab-btn bg-white inline-block py-2 px-4 text-blue-600 hover:text-blue-800 font-semibold border-l border-t border-r rounded-t" href="#" data-tab="keywords-tab">
+                            关键词
+                        </a>
+                    </li>
+                    <li class="mr-1">
+                        <a class="tab-btn bg-white inline-block py-2 px-4 text-blue-600 hover:text-blue-800 font-semibold border-l border-t border-r rounded-t" href="#" data-tab="summary-tab">
+                            摘要
+                        </a>
+                    </li>
+                    <li class="mr-1">
+                        <a class="tab-btn bg-white inline-block py-2 px-4 text-blue-600 hover:text-blue-800 font-semibold border-l border-t border-r rounded-t" href="#" data-tab="sentiment-tab">
+                            情感分析
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- 关键词标签页 -->
+            <div id="keywords-tab" class="tab-content">
+                <div id="keywords-result" class="p-4 bg-gray-100 rounded min-h-64 mb-4">
+                    <p class="text-gray-500">关键词提取结果将显示在这里...</p>
+                </div>
+                <div id="keywords-chart" class="w-full h-64"></div>
+                <div id="loading-keywords" class="loading hidden">
+                    <div class="loading-spinner"></div>
+                    <span class="ml-2">关键词提取中...</span>
+                </div>
+            </div>
+
+            <!-- 摘要标签页 -->
+            <div id="summary-tab" class="tab-content">
+                <div class="mb-4">
+                    <label class="block mb-2">摘要长度：</label>
+                    <select id="summary-length" class="p-2 border rounded">
+                        <option value="short">简短</option>
+                        <option value="medium" selected>中等</option>
+                        <option value="long">详细</option>
+                    </select>
+                </div>
+                <div id="summary-result" class="p-4 bg-gray-100 rounded min-h-64">
+                    <p class="text-gray-500">摘要生成结果将显示在这里...</p>
+                </div>
+                <div id="loading-summary" class="loading hidden">
+                    <div class="loading-spinner"></div>
+                    <span class="ml-2">摘要生成中...</span>
+                </div>
+            </div>
+
+            <!-- 情感分析标签页 -->
+            <div id="sentiment-tab" class="tab-content">
+                <div id="sentiment-result" class="p-4 bg-gray-100 rounded min-h-64 mb-4">
+                    <p class="text-gray-500">情感分析结果将显示在这里...</p>
+                </div>
+                <div id="sentiment-chart" class="w-full h-64"></div>
+                <div id="loading-sentiment" class="loading hidden">
+                    <div class="loading-spinner"></div>
+                    <span class="ml-2">情感分析中...</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-gray-800 text-white p-4 mt-8">
+        <div class="container mx-auto text-center">
+            <p>© 2025 基于LLM的长文档信息提取与分析系统</p>
+        </div>
+    </footer>
+
+    <script>
+        $(document).ready(function() {
+            // 加载文件列表
+            loadFileList();
+
+            // 初始化标签页
+            $('.tab-btn').first().addClass('active');
+            $('#keywords-tab').addClass('active');
+
+            // 标签页切换
+            $('.tab-btn').click(function(e) {
+                e.preventDefault();
+                $('.tab-btn').removeClass('active');
+                $(this).addClass('active');
+
+                $('.tab-content').removeClass('active');
+                $('#' + $(this).data('tab')).addClass('active');
+            });
+
+            // 文件上传
+            $('#upload-form').submit(function(e) {
+                e.preventDefault();
+                uploadFile();
+            });
+
+            // 关键词提取
+            $('#btn-keywords').click(function() {
+                extractKeywords();
+            });
+
+            // 摘要生成
+            $('#btn-summary').click(function() {
+                generateSummary();
+            });
+
+            // 情感分析
+            $('#btn-sentiment').click(function() {
+                analyzeSentiment();
+            });
+        });
+
+        // 加载文件列表
+        function loadFileList() {
+            $.ajax({
+                url: '/api/upload/list',
+                type: 'GET',
+                success: function(response) {
+                    $('#file-select').empty();
+                    $('#file-select').append('<option value="">-- 选择文档 --</option>');
+
+                    if (response.files && response.files.length > 0) {
+                        response.files.forEach(function(file) {
+                            $('#file-select').append(`<option value="${file.path}">${file.name} (${formatFileSize(file.size)})</option>`);
+                        });
+                    }
+                },
+                error: function(error) {
+                    console.error('加载文件列表失败:', error);
+                }
+            });
+        }
+
+        // 上传文件
+        function uploadFile() {
+            const fileInput = $('#file-input')[0];
+            if (fileInput.files.length === 0) {
+                alert('请选择要上传的文件');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            $('#upload-status').addClass('hidden');
+            $('#loading-upload').removeClass('hidden');
+
+            $.ajax({
+                url: '/api/upload',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    $('#loading-upload').addClass('hidden');
+                    $('#upload-status').removeClass('hidden');
+                    $('#upload-status').html(`
+                        <div class="text-green-600 font-medium">上传成功!</div>
+                        <div>文件名: ${response.filename}</div>
+                        <div>分块数量: ${response.chunks_count}</div>
+                    `);
+
+                    // 重新加载文件列表
+                    loadFileList();
+                },
+                error: function(error) {
+                    $('#loading-upload').addClass('hidden');
+                    $('#upload-status').removeClass('hidden');
+                    $('#upload-status').html(`
+                        <div class="text-red-600 font-medium">上传失败</div>
+                        <div>${error.responseJSON ? error.responseJSON.error : '未知错误'}</div>
+                    `);
+                }
+            });
+        }
+
+        // 提取关键词
+        function extractKeywords() {
+            const filePath = $('#file-select').val();
+            if (!filePath) {
+                alert('请先选择一个文档');
+                return;
+            }
+
+            $('#keywords-result').html('<p class="text-gray-500">关键词提取中...</p>');
+            $('#loading-keywords').removeClass('hidden');
+
+            // 切换到关键词标签页
+            $('.tab-btn[data-tab="keywords-tab"]').click();
+
+            $.ajax({
+                url: '/api/keywords/extract',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    file_path: filePath
+                }),
+                success: function(response) {
+                    $('#loading-keywords').addClass('hidden');
+
+                    // 显示关键词结果
+                    let keywordsHtml = `<h3 class="font-semibold mb-2">文件: ${response.filename}</h3>`;
+                    keywordsHtml += '<div class="flex flex-wrap">';
+
+                    response.keywords.forEach(function(kw) {
+                        const fontSize = 14 + (kw.weight * 2);
+                        keywordsHtml += `<span class="m-1 p-2 bg-blue-100 rounded" style="font-size: ${fontSize}px">${kw.text} (${kw.weight})</span>`;
+                    });
+
+                    keywordsHtml += '</div>';
+                    $('#keywords-result').html(keywordsHtml);
+
+                    // 绘制关键词图表
+                    renderKeywordsChart(response.keywords);
+                },
+                error: function(error) {
+                    $('#loading-keywords').addClass('hidden');
+                    $('#keywords-result').html(`
+                        <div class="text-red-600 font-medium">关键词提取失败</div>
+                        <div>${error.responseJSON ? error.responseJSON.error : '未知错误'}</div>
+                    `);
+                }
+            });
+        }
+
+        // 生成摘要
+        function generateSummary() {
+            const filePath = $('#file-select').val();
+            if (!filePath) {
+                alert('请先选择一个文档');
+                return;
+            }
+
+            const length = $('#summary-length').val();
+
+            $('#summary-result').html('<p class="text-gray-500">摘要生成中...</p>');
+            $('#loading-summary').removeClass('hidden');
+
+            // 切换到摘要标签页
+            $('.tab-btn[data-tab="summary-tab"]').click();
+
+            $.ajax({
+                url: '/api/summary/generate',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    file_path: filePath,
+                    length: length
+                }),
+                success: function(response) {
+                    $('#loading-summary').addClass('hidden');
+
+                    // 显示摘要结果
+                    let summaryHtml = `<h3 class="font-semibold mb-2">文件: ${response.filename}</h3>`;
+                    summaryHtml += `<div class="mt-4 whitespace-pre-line">${response.summary}</div>`;
+
+                    $('#summary-result').html(summaryHtml);
+                },
+                error: function(error) {
+                    $('#loading-summary').addClass('hidden');
+                    $('#summary-result').html(`
+                        <div class="text-red-600 font-medium">摘要生成失败</div>
+                        <div>${error.responseJSON ? error.responseJSON.error : '未知错误'}</div>
+                    `);
+                }
+            });
+        }
+
+        // 情感分析
+        function analyzeSentiment() {
+            const filePath = $('#file-select').val();
+            if (!filePath) {
+                alert('请先选择一个文档');
+                return;
+            }
+
+            $('#sentiment-result').html('<p class="text-gray-500">情感分析中...</p>');
+            $('#loading-sentiment').removeClass('hidden');
+
+            // 切换到情感分析标签页
+            $('.tab-btn[data-tab="sentiment-tab"]').click();
+
+            $.ajax({
+                url: '/api/sentiment/analyze',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    file_path: filePath
+                }),
+                success: function(response) {
+                    $('#loading-sentiment').addClass('hidden');
+
+                    // 显示情感分析结果
+                    let sentimentHtml = `<h3 class="font-semibold mb-2">文件: ${response.filename}</h3>`;
+
+                    const sentiment = response.overall_sentiment;
+                    let sentimentClass = 'text-gray-600';
+                    if (sentiment.dominant_sentiment === 'positive') {
+                        sentimentClass = 'text-green-600';
+                    } else if (sentiment.dominant_sentiment === 'negative') {
+                        sentimentClass = 'text-red-600';
+                    }
+
+                    sentimentHtml += `<div class="mt-2">
+                        <p class="font-medium ${sentimentClass}">总体情感: ${translateSentiment(sentiment.dominant_sentiment)}</p>
+                        <div class="flex mt-2 space-x-4">
+                            <div>正面: ${(sentiment.positive_score * 100).toFixed(1)}%</div>
+                            <div>负面: ${(sentiment.negative_score * 100).toFixed(1)}%</div>
+                            <div>中性: ${(sentiment.neutral_score * 100).toFixed(1)}%</div>
+                        </div>
+                    </div>`;
+
+                    // 关键情感短语
+                    sentimentHtml += '<div class="mt-4"><p class="font-medium">关键情感短语:</p><ul class="list-disc pl-6 mt-2">';
+                    response.key_phrases.forEach(function(phrase) {
+                        sentimentHtml += `<li>${phrase}</li>`;
+                    });
+                    sentimentHtml += '</ul></div>';
+
+                    $('#sentiment-result').html(sentimentHtml);
+
+                    // 绘制情感分析图表
+                    renderSentimentChart(response.overall_sentiment);
+                },
+                error: function(error) {
+                    $('#loading-sentiment').addClass('hidden');
+                    $('#sentiment-result').html(`
+                        <div class="text-red-600 font-medium">情感分析失败</div>
+                        <div>${error.responseJSON ? error.responseJSON.error : '未知错误'}</div>
+                    `);
+                }
+            });
+        }
+
+        // 绘制关键词图表
+        function renderKeywordsChart(keywords) {
+            const chart = echarts.init(document.getElementById('keywords-chart'));
+
+            const data = keywords.map(kw => ({
+                name: kw.text,
+                value: kw.weight
+            }));
+
+            const option = {
+                title: {
+                    text: '关键词权重分布',
+                    left: 'center'
+                },
+                tooltip: {
+                    trigger: 'item',
+                    formatter: '{b}: {c}'
+                },
+                series: [{
+                    type: 'wordCloud',
+                    shape: 'circle',
+                    left: 'center',
+                    width: '70%',
+                    height: '80%',
+                    right: null,
+                    bottom: null,
+                    sizeRange: [14, 50],
+                    rotationRange: [0, 0],
+                    rotationStep: 45,
+                    gridSize: 8,
+                    drawOutOfBound: false,
+                    textStyle: {
+                        fontFamily: 'sans-serif',
+                        fontWeight: 'bold',
+                        color: function () {
+                            // 随机颜色
+                            return 'rgb(' + [
+                                Math.round(Math.random() * 160),
+                                Math.round(Math.random() * 160),
+                                Math.round(Math.random() * 160)
+                            ].join(',') + ')';
+                        }
+                    },
+                    emphasis: {
+                        focus: 'self',
+                        textStyle: {
+                            shadowBlur: 10,
+                            shadowColor: '#333'
+                        }
+                    },
+                    data: data
+                }]
+            };
+
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+
+        // 绘制情感分析图表
+        function renderSentimentChart(sentiment) {
+            const chart = echarts.init(document.getElementById('sentiment-chart'));
+
+            const option = {
+                title: {
+                    text: '情感分布',
+                    left: 'center'
+                },
+                tooltip: {
+                    trigger: 'item',
+                    formatter: '{b}: {c} ({d}%)'
+                },
+                legend: {
+                    orient: 'horizontal',
+                    bottom: 'bottom'
+                },
+                series: [
+                    {
+                        name: '情感分布',
+                        type: 'pie',
+                        radius: '60%',
+                        data: [
+                            {
+                                value: sentiment.positive_score,
+                                name: '正面',
+                                itemStyle: { color: '#4caf50' }
+                            },
+                            {
+                                value: sentiment.negative_score,
+                                name: '负面',
+                                itemStyle: { color: '#f44336' }
+                            },
+                            {
+                                value: sentiment.neutral_score,
+                                name: '中性',
+                                itemStyle: { color: '#9e9e9e' }
+                            }
+                        ],
+                        emphasis: {
+                            itemStyle: {
+                                shadowBlur: 10,
+                                shadowOffsetX: 0,
+                                shadowColor: 'rgba(0, 0, 0, 0.5)'
+                            }
+                        }
+                    }
+                ]
+            };
+
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+
+        // 辅助函数: 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            else return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+
+        // 辅助函数: 翻译情感标签
+        function translateSentiment(sentiment) {
+            const map = {
+                'positive': '正面',
+                'negative': '负面',
+                'neutral': '中性'
+            };
+            return map[sentiment] || sentiment;
+        }
+    </script>
+</body>
+</html>
